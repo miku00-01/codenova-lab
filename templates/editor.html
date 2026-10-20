@@ -1,18 +1,27 @@
 {% extends "base.html" %}
-{% block title %}Shell 编辑器 - CloudOps Forge{% endblock %}
+{% block title %}Shell 编辑器 - {{ site_name }}{% endblock %}
 {% block content %}
 <div class="card">
     <h2>📝 Shell 脚本编辑器</h2>
     <p class="muted-line">
-        脚本只在平台内置沙箱中解释执行，不调用 CMD、PowerShell、Git Bash 或 WSL。支持常用命令、变量、基础 for 循环、管道和重定向。
+        脚本只在平台内置沙箱中解释执行，不调用 CMD、PowerShell、Git Bash 或 WSL。支持常用命令、变量、管道与重定向、<code>&amp;&amp;</code>/<code>||</code>、通配符、<code>$(命令)</code>、for/while/if 语句块。
     </p>
     {% if challenge %}
     <div class="task-banner">
         <a href="{{ url_for('practice') }}" class="back-link">← 返回代码任务</a>
-        <h3>{{ challenge.title }}</h3>
+        <h3>{{ challenge.title }}{% if challenge_status and challenge_status.status == 'passed' %} <span class="solved-chip">✓ 已完成</span>{% endif %}</h3>
         <p>{{ challenge.goal }}</p>
-        <div class="expected-line">预期输出 <code>{{ challenge.expected }}</code></div>
+        <div class="expected-line">
+            预期输出
+            <code>{% if challenge.expected is string %}{{ challenge.expected }}{% else %}{{ challenge.expected|join(' 或 ') }}{% endif %}</code>
+            {% if challenge.expected_regex %}<span class="muted-small">（或匹配 {{ challenge.expected_regex }}）</span>{% endif %}
+        </div>
         <div class="challenge-feedback" id="challengeFeedback" role="status" aria-live="polite"></div>
+        <div class="challenge-next" id="challengeNext">
+            {% if next_challenge_item and challenge_status and challenge_status.status == 'passed' %}
+            <a class="btn btn-secondary" href="{{ url_for('editor', challenge=next_challenge_item.id) }}">下一题：{{ next_challenge_item.title }} →</a>
+            {% endif %}
+        </div>
     </div>
     {% endif %}
 
@@ -55,22 +64,58 @@ const fileList = document.getElementById('fileList');
 const runOutput = document.getElementById('runOutput');
 const challenge = {{ challenge|tojson }};
 const feedback = document.getElementById('challengeFeedback');
+const nextBox = document.getElementById('challengeNext');
 if (challenge) {
     fileName.value = challenge.id + '.sh';
     editor.value = challenge.starter;
-}
-function showChallengeResult(actual, success) {
-    if (!challenge || !feedback) return;
-    const normalize = value => String(value || '').replace(/\r\n/g, '\n').trim();
-    const matched = success && normalize(actual) === normalize(challenge.expected);
-    feedback.textContent = matched ? '✓ 输出与目标一致，任务完成' : '再试一次：对照预期输出检查代码和运行结果';
-    feedback.className = 'challenge-feedback ' + (matched ? 'passed' : 'retry');
 }
 
 async function request(url, options) {
     const response = await fetch(url, options);
     return response.json();
 }
+
+function renderOutput(result) {
+    let output = result.stdout || '';
+    if (result.stderr) output += (output ? '\n' : '') + '[错误]\n' + result.stderr;
+    output += `\n[退出码: ${result.returncode}]`;
+    runOutput.classList.add('show');
+    runOutput.textContent = output;
+}
+
+function updateProgressBadge(progress) {
+    if (!progress) return;
+    const badge = document.querySelector('.nav-progress');
+    if (badge) {
+        badge.textContent = `✓ ${progress.solved_count}/${progress.total}`;
+        badge.title = `已完成 ${progress.solved_count} / ${progress.total} 个任务`;
+    }
+}
+
+function renderVerdict(result) {
+    if (!feedback) return;
+    feedback.textContent = (result.passed ? '✓ ' : '✗ ') + (result.message || '');
+    feedback.className = 'challenge-feedback ' + (result.passed ? 'passed' : 'retry');
+    if (result.passed) {
+        fileName.value = challenge.id + '.sh';
+    } else if (result.expected) {
+        feedback.textContent += `（预期：${result.expected}｜实际：${result.actual || '无输出'}）`;
+    }
+    updateProgressBadge(result.progress);
+    if (nextBox) {
+        nextBox.innerHTML = '';
+        if (result.passed && result.next_challenge) {
+            const link = document.createElement('a');
+            link.className = 'btn btn-secondary';
+            link.href = result.next_challenge.url;
+            link.textContent = `下一题：${result.next_challenge.title} →`;
+            nextBox.appendChild(link);
+        } else if (result.passed) {
+            nextBox.textContent = '这门语言的练习都完成啦，可以去写自己的脚本。';
+        }
+    }
+}
+
 async function loadScript(name) {
     const data = await request('{{ url_for("api_load_script") }}?name=' + encodeURIComponent(name));
     if (!data.ok) return alert(data.error || '加载失败');
@@ -105,21 +150,30 @@ document.getElementById('runBtn').onclick = async () => {
     runOutput.classList.add('show');
     runOutput.textContent = '正在平台沙箱中运行…';
     try {
-        const name = await save();
-        const data = await request('{{ url_for("api_run_script") }}', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name, cwd: '/home/student'})
-        });
-        let output = data.stdout || '';
-        if (data.stderr) output += (output ? '\n' : '') + '[错误]\n' + data.stderr;
-        output += `\n[退出码: ${data.returncode}]`;
-        runOutput.textContent = output;
-        showChallengeResult(data.stdout, data.returncode === 0 && !data.stderr);
-    } catch (error) { runOutput.textContent = '[错误] ' + error.message; showChallengeResult('', false); }
+        if (challenge) {
+            const result = await request('{{ url_for("api_check") }}', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({challenge_id: challenge.id, source: editor.value, cwd: '/home/student'})
+            });
+            if (!result.ok) throw new Error(result.error || '判题失败');
+            renderOutput(result.run || {});
+            renderVerdict(result);
+            await refreshList();
+        } else {
+            const name = await save();
+            const data = await request('{{ url_for("api_run_script") }}', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name, cwd: '/home/student'})
+            });
+            renderOutput(data);
+        }
+    } catch (error) {
+        runOutput.textContent = '[错误] ' + error.message;
+    }
 };
 document.getElementById('newBtn').onclick = () => {
     fileName.value = 'new_script.sh';
-    editor.value = '#!/bin/bash\n# 新脚本：运行在平台沙箱\necho "Hello, Code Lab"\n';
+    editor.value = '#!/bin/bash\n# 新脚本：运行在平台沙箱\necho "Hello, Codenova"\n';
     runOutput.classList.remove('show');
 };
 document.getElementById('delBtn').onclick = async () => {

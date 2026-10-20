@@ -1,4 +1,4 @@
-/* CloudOps Forge · clean code laboratory */
+/* Codenova 实验室 · clean code laboratory */
 :root {
     color-scheme: light;
     --page: #f6f7fb;
@@ -182,3 +182,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     .footer { padding: 20px 17px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+
+/* ---------- 练习进度 ---------- */
+.nav-progress { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; padding: 7px 12px; border-radius: 999px; background: var(--surface-soft); color: var(--primary); font-size: .8rem; font-weight: 800; white-space: nowrap; }
+.progress-panel { margin: 0 0 22px; padding: 18px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); }
+.progress-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 14px; margin-bottom: 12px; }
+.progress-track { height: 10px; border-radius: 999px; background: var(--page); border: 1px solid var(--border); overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #724af1, #8b51ef); transition: width .4s ease; }
+.progress-reset { margin-top: 14px; padding: 8px 13px; font-size: .82rem; }
+.solved-chip { border-radius: 8px; padding: 4px 9px; font-size: .72rem; font-weight: 800; background: rgba(32, 136, 91, .12); color: var(--green); white-space: nowrap; }
+.challenge-card.solved { border-color: #bfe6d4; }
+:root[data-theme="dark"] .challenge-card.solved { border-color: #2f6a52; }
+.challenge-next { margin-top: 12px; }
+.challenge-next:empty { display: none; }
+.challenge-next .btn { padding: 8px 14px; font-size: .84rem; }
+.approach-hint { display: block; margin-top: 6px; color: var(--muted); font-size: .8rem; }

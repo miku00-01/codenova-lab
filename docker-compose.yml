@@ -1,7 +1,7 @@
 services:
-  cloudops-forge:
+  codenova-lab:
     build: .
-    container_name: cloudops-forge
+    container_name: codenova-lab
     restart: unless-stopped
     ports:
       - "127.0.0.1:18083:8000"
@@ -9,7 +9,10 @@ services:
       APP_AUTH_ENABLED: "${APP_AUTH_ENABLED:-1}"
       APP_USERNAME: "${APP_USERNAME:?请在 .env 中设置 APP_USERNAME}"
       APP_PASSWORD: "${APP_PASSWORD:?请在 .env 中设置 APP_PASSWORD}"
+      SITE_NAME: "${SITE_NAME:-Codenova 实验室}"
+      TERMINAL_RATE_LIMIT: "${TERMINAL_RATE_LIMIT:-60}"
     volumes:
+      - ./data:/app/data
       - ./scripts:/app/scripts
       - ./python_scripts:/app/python_scripts
       - ./sandbox:/app/sandbox

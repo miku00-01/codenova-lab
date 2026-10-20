@@ -1,26 +1,49 @@
 {% extends "base.html" %}
-{% block title %}代码任务 - CloudOps Forge{% endblock %}
+{% block title %}代码任务 - {{ site_name }}{% endblock %}
 {% block content %}
 <section class="page-intro">
     <span class="eyebrow">⌘ &nbsp; 练习路径</span>
     <h1>代码任务</h1>
-    <p>挑一个小目标，打开带起始代码的编辑器。运行后，平台会对照预期输出提示结果。</p>
+    <p>挑一个小目标，打开带起始代码的编辑器。运行后由服务端判题，做对的任务会一直记在进度里。</p>
 </section>
 
-<div class="filter-row" role="group" aria-label="按语言筛选任务">
+{% if progress %}
+{% set pct = (100 * progress.solved_count // progress.total) if progress.total else 0 %}
+<section class="progress-panel" aria-label="练习进度">
+    <div class="progress-head">
+        <strong>{{ progress.solved_count }} / {{ progress.total }} 个任务已完成</strong>
+        <span class="muted-small">累计提交 {{ progress.attempts }} 次</span>
+    </div>
+    <div class="progress-track" role="progressbar" aria-valuenow="{{ pct }}" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-fill" style="width: {{ pct }}%"></div>
+    </div>
+    {% if progress.attempts %}
+    <button class="btn btn-secondary progress-reset" id="resetProgress" type="button">重置我的进度</button>
+    {% endif %}
+</section>
+{% endif %}
+
+<div class="filter-row" role="group" aria-label="筛选任务">
     <button class="filter-chip active" data-filter="all" type="button">全部 <span>{{ challenges|length }}</span></button>
-    <button class="filter-chip" data-filter="python" type="button">Python</button>
+    <button class="filter-chip" data-filter="todo" type="button">未完成 <span id="todoCount">{{ challenges|length - solved|length }}</span></button>
     <button class="filter-chip" data-filter="shell" type="button">Shell</button>
+    <button class="filter-chip" data-filter="python" type="button">Python</button>
 </div>
 
 <div class="challenge-grid" id="challengeGrid">
     {% for challenge in challenges %}
-    <article class="challenge-card" data-language="{{ challenge.language }}">
-        <div class="challenge-top"><span class="language-chip">{{ challenge.language|upper }}</span><span class="level-chip">{{ challenge.level }}</span></div>
+    <article class="challenge-card{{ ' solved' if challenge.id in solved else '' }}" data-language="{{ challenge.language }}" data-solved="{{ '1' if challenge.id in solved else '0' }}">
+        <div class="challenge-top">
+            <span class="language-chip">{{ challenge.language|upper }}</span>
+            <span class="level-chip">{{ challenge.level }}</span>
+            {% if challenge.id in solved %}<span class="solved-chip">✓ 已完成</span>{% endif %}
+        </div>
         <h2>{{ challenge.title }}</h2>
         <p>{{ challenge.summary }}</p>
         <div class="challenge-goal"><span>目标</span>{{ challenge.goal }}</div>
-        <a class="card-link" href="{{ url_for('python_editor' if challenge.language == 'python' else 'editor', challenge=challenge.id) }}">开始练习 →</a>
+        <a class="card-link" href="{{ url_for('python_editor' if challenge.language == 'python' else 'editor', challenge=challenge.id) }}">
+            {{ '再练一次 →' if challenge.id in solved else '开始练习 →' }}
+        </a>
     </article>
     {% endfor %}
 </div>
@@ -30,10 +53,22 @@
 document.querySelectorAll('[data-filter]').forEach(button => {
     button.addEventListener('click', () => {
         document.querySelectorAll('[data-filter]').forEach(item => item.classList.toggle('active', item === button));
+        const filter = button.dataset.filter;
         document.querySelectorAll('[data-language]').forEach(card => {
-            card.hidden = button.dataset.filter !== 'all' && card.dataset.language !== button.dataset.filter;
+            const ok = filter === 'all'
+                || (filter === 'todo' && card.dataset.solved !== '1')
+                || card.dataset.language === filter;
+            card.hidden = !ok;
         });
     });
 });
+const resetButton = document.getElementById('resetProgress');
+if (resetButton) {
+    resetButton.addEventListener('click', async () => {
+        if (!confirm('清空当前账号的判题记录与提交历史？代码文件不会被删除。')) return;
+        const response = await fetch('{{ url_for("api_progress_reset") }}', {method: 'POST'});
+        if (response.ok) location.reload();
+    });
+}
 </script>
 {% endblock %}

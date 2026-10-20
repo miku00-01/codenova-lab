@@ -5,9 +5,17 @@
 .venv_*/
 __pycache__/
 *.py[cod]
+.pytest_cache/
 sandbox/
 scripts/
 python_scripts/
+data/*.sqlite3
+data/*.sqlite3-*
+data/*.db
+data/*.db-*
 backup*/
+_versions/
 *.log
 *.bak
+.DS_Store
+Thumbs.db

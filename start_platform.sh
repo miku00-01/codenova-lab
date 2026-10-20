@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-#  CloudOps Forge - Linux/macOS 启动脚本
+#  Codenova 实验室 - Linux/macOS 启动脚本
 #  （对应 Windows 下的 启动平台.bat）
 #  - 自动检测并创建 .venv，避免污染系统 Python
 #  - 自动检测端口 5000 占用，被占用时切换 5001
@@ -74,7 +74,7 @@ else
 fi
 
 # ---------- 6. 启动 Flask ----------
-echo "[5/5] 启动 CloudOps Forge..."
+echo "[5/5] 启动 Codenova 实验室..."
 echo "------------------------------------------"
 echo "  访问地址：http://127.0.0.1:${PORT}"
 echo "  默认落地：代码练习首页"

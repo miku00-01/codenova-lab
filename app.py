@@ -1,33 +1,48 @@
 # -*- coding: utf-8 -*-
-"""隔离运行的代码练习平台。
+"""隔离运行的代码练习平台（Codenova 实验室）。
 
 安全边界：
 - Linux/Shell 由平台内置模拟器执行，只访问项目 sandbox/。
 - Python 由浏览器中的 Pyodide(WebAssembly)执行，不启动本机 Python 子进程。
 - 服务端不调用 cmd、PowerShell、Git Bash、WSL 或其他系统终端。
+
+本轮新增：
+- 服务端判题 ``/api/check``（多答案 / 正则 / 归一化），前端不再各写一份比较逻辑；
+- 练习进度持久化 ``/api/progress``（SQLite，按用户隔离）；
+- 配置了账号密码时，沙箱、脚本目录均按用户隔离；
+- ``/api/terminal`` 限流，静态资源长期缓存，可选 gzip。
 """
 
 from __future__ import annotations
 
-import os
 import hmac
+import os
+import re
+import secrets
+import threading
+import time
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, g, jsonify, render_template, request, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from challenges import CHALLENGES, CHALLENGES_BY_ID
+from challenges import CHALLENGES, CHALLENGES_BY_ID, by_language, next_challenge
+from judge import judge
+from progress import ProgressStore
 from sandbox_shell import VirtualShell
-
 
 BASE_DIR = Path(__file__).resolve().parent
 SCRIPT_DIR = BASE_DIR / "scripts"
 PYTHON_SCRIPT_DIR = BASE_DIR / "python_scripts"
 SANDBOX_DIR = BASE_DIR / "sandbox"
-for directory in (SCRIPT_DIR, PYTHON_SCRIPT_DIR, SANDBOX_DIR):
+DATA_DIR = BASE_DIR / "data"
+for directory in (SCRIPT_DIR, PYTHON_SCRIPT_DIR, SANDBOX_DIR, DATA_DIR):
     directory.mkdir(parents=True, exist_ok=True)
 
-shell = VirtualShell(SANDBOX_DIR)
+SITE_NAME = os.environ.get("SITE_NAME", "Codenova 实验室")
+USER_COOKIE = "codenova_user"
+
+store = ProgressStore(os.environ.get("PROGRESS_DB") or DATA_DIR / "progress.sqlite3")
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(
@@ -47,11 +62,101 @@ app.config["APP_AUTH_ENABLED"] = os.environ.get("APP_AUTH_ENABLED", "1").strip()
     "no",
     "off",
 }
+# 只有「开了登录保护 + 配置了账号」才算多用户部署，此时每个用户独占沙箱与脚本目录。
+app.config["MULTI_USER"] = bool(
+    app.config["APP_AUTH_ENABLED"]
+    and str(app.config["APP_USERNAME"] or "").strip()
+)
+app.config["TERMINAL_RATE_LIMIT"] = int(os.environ.get("TERMINAL_RATE_LIMIT", "60") or 60)
+
+try:  # 可选依赖：没装也能跑，只是不压缩
+    from flask_compress import Compress  # type: ignore
+
+    Compress(app)
+except Exception:  # pragma: no cover - 依赖缺失时的降级
+    pass
 
 
+# --------------------------------------------------------------------------- #
+# 用户身份
+# --------------------------------------------------------------------------- #
+def _slug(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]", "_", value or "").strip("._")
+    return (cleaned or "guest")[:48]
+
+
+def current_user() -> str:
+    """登录用户名优先；未登录时用 cookie 里的匿名 id，保证进度不串号。"""
+    if getattr(g, "user", None):
+        return g.user
+    username = ""
+    if app.config.get("APP_AUTH_ENABLED") and request.authorization:
+        username = str(request.authorization.username or "").strip()
+    user = username or str(request.cookies.get(USER_COOKIE) or "").strip()
+    if not user:
+        user = "guest" if not app.config.get("MULTI_USER") else "u" + secrets.token_hex(8)
+        g.new_cookie = True
+    g.user = user
+    return user
+
+
+def _shell_root(user: str) -> Path:
+    if app.config.get("MULTI_USER"):
+        return SANDBOX_DIR / "users" / _slug(user)
+    return SANDBOX_DIR
+
+
+def _script_dirs(user: str) -> tuple[Path, Path]:
+    if app.config.get("MULTI_USER"):
+        shell_dir = SCRIPT_DIR / "users" / _slug(user)
+        python_dir = PYTHON_SCRIPT_DIR / "users" / _slug(user)
+    else:
+        shell_dir, python_dir = SCRIPT_DIR, PYTHON_SCRIPT_DIR
+    shell_dir.mkdir(parents=True, exist_ok=True)
+    python_dir.mkdir(parents=True, exist_ok=True)
+    return shell_dir, python_dir
+
+
+_shells: dict[str, VirtualShell] = {}
+_shells_lock = threading.Lock()
+_MAX_SHELLS = 64
+
+
+def shell_for(user: str) -> VirtualShell:
+    key = _slug(user)
+    with _shells_lock:
+        instance = _shells.get(key)
+        if instance is None:
+            if len(_shells) >= _MAX_SHELLS:
+                _shells.pop(next(iter(_shells)))
+            instance = VirtualShell(_shell_root(user))
+            _shells[key] = instance
+        return instance
+
+
+_hits: dict[str, list[float]] = {}
+_hits_lock = threading.Lock()
+
+
+def rate_limited(key: str, limit: int | None = None, window: float = 10.0) -> bool:
+    limit = int(limit or app.config["TERMINAL_RATE_LIMIT"])
+    now = time.monotonic()
+    with _hits_lock:
+        stamps = [item for item in _hits.get(key, []) if now - item < window]
+        if len(stamps) >= limit:
+            _hits[key] = stamps
+            return True
+        stamps.append(now)
+        _hits[key] = stamps
+        return False
+
+
+# --------------------------------------------------------------------------- #
+# 登录 / 响应头
+# --------------------------------------------------------------------------- #
 def _unauthorized() -> Response:
-    response = Response("需要登录 CloudOps Forge", 401)
-    response.headers["WWW-Authenticate"] = 'Basic realm="CloudOps Forge", charset="UTF-8"'
+    response = Response(f"需要登录 {SITE_NAME}", 401)
+    response.headers["WWW-Authenticate"] = f'Basic realm="{SITE_NAME}", charset="UTF-8"'
     return response
 
 
@@ -82,11 +187,37 @@ def add_security_headers(response: Response) -> Response:
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("Referrer-Policy", "same-origin")
+    if request.path.startswith("/static/vendor/"):
+        # Pyodide 运行时有十几 MB，长期缓存可以显著减少重复加载。
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif request.path.startswith("/static/"):
+        response.headers.setdefault("Cache-Control", "public, max-age=3600")
+    if getattr(g, "new_cookie", False):
+        response.set_cookie(
+            USER_COOKIE,
+            g.user,
+            max_age=365 * 24 * 3600,
+            httponly=True,
+            samesite="Lax",
+        )
     return response
 
 
+@app.context_processor
+def inject_globals() -> dict:
+    return {
+        "site_name": SITE_NAME,
+        "current_user": current_user() if request.endpoint not in (None, "static") else "",
+    }
+
+
+# --------------------------------------------------------------------------- #
+# 小工具
+# --------------------------------------------------------------------------- #
 def _files(directory: Path, extension: str) -> list[dict]:
     result = []
+    if not directory.is_dir():
+        return result
     for path in sorted(directory.glob(f"*{extension}"), key=lambda item: item.name.lower()):
         if path.is_file():
             stat = path.stat()
@@ -108,13 +239,33 @@ def _safe_file(directory: Path, raw_name: str, extension: str) -> tuple[Path | N
     return directory / safe_name, None
 
 
+def _challenge_public(challenge: dict) -> dict:
+    """给练习列表/API 用的公开视图：不暴露标准答案。"""
+    item = dict(challenge)
+    item.pop("expected", None)
+    item.pop("expected_regex", None)
+    item.pop("strict_stderr", None)
+    item.pop("allow_nonzero", None)
+    item["url"] = url_for(
+        "python_editor" if challenge["language"] == "python" else "editor",
+        challenge=challenge["id"],
+    )
+    return item
+
+
+# --------------------------------------------------------------------------- #
+# 页面
+# --------------------------------------------------------------------------- #
 @app.route("/")
 def index():
+    user = current_user()
+    summary = store.summary(user, len(CHALLENGES))
     return render_template(
         "index.html",
-        shell_count=len(_files(SCRIPT_DIR, ".sh")),
-        python_count=len(_files(PYTHON_SCRIPT_DIR, ".py")),
+        shell_count=len(_files(_script_dirs(user)[0], ".sh")),
+        python_count=len(_files(_script_dirs(user)[1], ".py")),
         challenge_count=len(CHALLENGES),
+        progress=summary,
     )
 
 
@@ -125,37 +276,154 @@ def terminal():
 
 @app.route("/editor")
 def editor():
+    user = current_user()
     challenge = CHALLENGES_BY_ID.get(request.args.get("challenge", ""))
     if challenge and challenge["language"] != "shell":
         challenge = None
-    return render_template("editor.html", scripts=[item["name"] for item in _files(SCRIPT_DIR, ".sh")], challenge=challenge)
+    summary = store.summary(user, len(CHALLENGES))
+    status = store.get(user).get(challenge["id"], {}) if challenge else {}
+    return render_template(
+        "editor.html",
+        scripts=[item["name"] for item in _files(_script_dirs(user)[0], ".sh")],
+        challenge=challenge,
+        challenge_status=status,
+        next_challenge_item=next_challenge(challenge["id"]) if challenge else None,
+        progress=summary,
+    )
 
 
 @app.route("/python")
 def python_editor():
+    user = current_user()
     challenge = CHALLENGES_BY_ID.get(request.args.get("challenge", ""))
     if challenge and challenge["language"] != "python":
         challenge = None
-    return render_template("python_editor.html", scripts=[item["name"] for item in _files(PYTHON_SCRIPT_DIR, ".py")], challenge=challenge)
+    summary = store.summary(user, len(CHALLENGES))
+    status = store.get(user).get(challenge["id"], {}) if challenge else {}
+    return render_template(
+        "python_editor.html",
+        scripts=[item["name"] for item in _files(_script_dirs(user)[1], ".py")],
+        challenge=challenge,
+        challenge_status=status,
+        next_challenge_item=next_challenge(challenge["id"]) if challenge else None,
+        progress=summary,
+    )
 
 
 @app.route("/practice")
 def practice():
-    return render_template("practice.html", challenges=CHALLENGES)
+    user = current_user()
+    summary = store.summary(user, len(CHALLENGES))
+    solved = set(summary["solved"])
+    return render_template(
+        "practice.html",
+        challenges=CHALLENGES,
+        solved=solved,
+        progress=summary,
+        challenge_groups={"shell": by_language("shell"), "python": by_language("python")},
+    )
 
 
 @app.route("/api/health")
 def health():
     return jsonify({
         "ok": True,
+        "app": SITE_NAME,
         "shell": "sandbox",
         "python": "browser-pyodide",
         "coding_challenges": len(CHALLENGES),
+        "multi_user": app.config.get("MULTI_USER", False),
     })
 
 
+@app.route("/api/challenges")
+def api_challenges():
+    return jsonify([_challenge_public(item) for item in CHALLENGES])
+
+
+# --------------------------------------------------------------------------- #
+# 判题与进度
+# --------------------------------------------------------------------------- #
+@app.route("/api/check", methods=["POST"])
+def api_check():
+    user = current_user()
+    if rate_limited(f"check:{user}", limit=30):
+        return jsonify({"ok": False, "passed": False, "error": "提交太快了，休息几秒再试"}), 429
+
+    payload = request.get_json(silent=True) or {}
+    challenge = CHALLENGES_BY_ID.get(str(payload.get("challenge_id") or ""))
+    if challenge is None:
+        return jsonify({"ok": False, "passed": False, "error": "题目不存在"}), 404
+
+    source = str(payload.get("source") or "")
+    run: dict | None = None
+    if challenge["language"] == "shell" and source.strip():
+        result = shell_for(user).execute_script(
+            source, cwd=str(payload.get("cwd") or "/home/student")
+        )
+        stdout, stderr, code = result["stdout"], result["stderr"], result["returncode"]
+        run = {"stdout": stdout, "stderr": stderr, "returncode": code, "cwd": result["cwd"]}
+    else:
+        stdout = str(payload.get("stdout") or "")
+        stderr = str(payload.get("stderr") or "")
+        try:
+            code = int(payload.get("returncode") or 0)
+        except (TypeError, ValueError):
+            code = 0
+
+    verdict = judge(challenge, stdout, stderr, code)
+    record = store.record(
+        user,
+        challenge["id"],
+        language=challenge["language"],
+        source=source,
+        stdout=verdict["actual"],
+        passed=verdict["passed"],
+    )
+
+    following = next_challenge(challenge["id"]) if verdict["passed"] else None
+    return jsonify({
+        "ok": True,
+        "passed": verdict["passed"],
+        "message": verdict["reason"],
+        "hint": verdict["hint"],
+        "expected": verdict["expected"],
+        "actual": verdict["actual"],
+        "run": run,
+        "status": record.get("status"),
+        "attempts": record.get("attempts"),
+        "next_challenge": _challenge_public(following) if following else None,
+        "progress": store.summary(user, len(CHALLENGES)),
+    })
+
+
+@app.route("/api/progress")
+def api_progress():
+    user = current_user()
+    return jsonify(store.summary(user, len(CHALLENGES)))
+
+
+@app.route("/api/progress/reset", methods=["POST"])
+def api_progress_reset():
+    user = current_user()
+    removed = store.reset(user)
+    return jsonify({"ok": True, "removed": removed, "progress": store.summary(user, len(CHALLENGES))})
+
+
+# --------------------------------------------------------------------------- #
+# Shell 沙箱
+# --------------------------------------------------------------------------- #
 @app.route("/api/terminal", methods=["POST"])
 def api_terminal():
+    user = current_user()
+    if rate_limited(f"terminal:{user}"):
+        return jsonify({
+            "status": "error",
+            "stdout": "",
+            "stderr": "命令执行太频繁，请稍后再试",
+            "returncode": 429,
+            "cwd": "/home/student",
+        }), 429
     payload = request.get_json(silent=True) or {}
     command = str(payload.get("command") or "").strip()
     cwd = str(payload.get("cwd") or "/home/student")
@@ -163,18 +431,35 @@ def api_terminal():
         return jsonify({"status": "error", "stderr": "命令不能为空", "stdout": "", "returncode": 2, "cwd": cwd})
     if len(command) > 20000:
         return jsonify({"status": "error", "stderr": "命令或脚本过长", "stdout": "", "returncode": 2, "cwd": cwd})
-    return jsonify(shell.execute(command, cwd=cwd))
+    return jsonify(shell_for(user).execute(command, cwd=cwd))
 
 
+@app.route("/api/sandbox/reset", methods=["POST"])
+def api_sandbox_reset():
+    user = current_user()
+    root = _shell_root(user)
+    with _shells_lock:
+        _shells.pop(_slug(user), None)
+    if root.exists():
+        import shutil
+
+        shutil.rmtree(root, ignore_errors=True)
+    shell_for(user)
+    return jsonify({"ok": True, "cwd": "/home/student"})
+
+
+# --------------------------------------------------------------------------- #
+# 脚本 CRUD
+# --------------------------------------------------------------------------- #
 @app.route("/api/scripts", methods=["GET"])
 def api_list_scripts():
-    return jsonify(_files(SCRIPT_DIR, ".sh"))
+    return jsonify(_files(_script_dirs(current_user())[0], ".sh"))
 
 
 @app.route("/api/scripts/save", methods=["POST"])
 def api_save_script():
     payload = request.get_json(silent=True) or {}
-    path, error = _safe_file(SCRIPT_DIR, str(payload.get("name") or ""), ".sh")
+    path, error = _safe_file(_script_dirs(current_user())[0], str(payload.get("name") or ""), ".sh")
     if error:
         return jsonify({"ok": False, "error": error})
     content = str(payload.get("content") or "")
@@ -186,7 +471,7 @@ def api_save_script():
 
 @app.route("/api/scripts/load", methods=["GET"])
 def api_load_script():
-    path, error = _safe_file(SCRIPT_DIR, request.args.get("name", ""), ".sh")
+    path, error = _safe_file(_script_dirs(current_user())[0], request.args.get("name", ""), ".sh")
     if error:
         return jsonify({"ok": False, "error": error})
     if not path.is_file():
@@ -197,7 +482,7 @@ def api_load_script():
 @app.route("/api/scripts/delete", methods=["POST"])
 def api_delete_script():
     payload = request.get_json(silent=True) or {}
-    path, error = _safe_file(SCRIPT_DIR, str(payload.get("name") or ""), ".sh")
+    path, error = _safe_file(_script_dirs(current_user())[0], str(payload.get("name") or ""), ".sh")
     if error:
         return jsonify({"ok": False, "error": error})
     if not path.is_file():
@@ -208,26 +493,30 @@ def api_delete_script():
 
 @app.route("/api/scripts/run", methods=["POST"])
 def api_run_script():
+    user = current_user()
     payload = request.get_json(silent=True) or {}
-    path, error = _safe_file(SCRIPT_DIR, str(payload.get("name") or ""), ".sh")
+    path, error = _safe_file(_script_dirs(user)[0], str(payload.get("name") or ""), ".sh")
     if error:
         return jsonify({"ok": False, "error": error})
     if not path.is_file():
         return jsonify({"ok": False, "error": "脚本不存在"})
-    result = shell.execute_script(path.read_text(encoding="utf-8"), cwd=str(payload.get("cwd") or "/home/student"))
+    result = shell_for(user).execute_script(
+        path.read_text(encoding="utf-8"),
+        cwd=str(payload.get("cwd") or "/home/student"),
+    )
     result["ok"] = result["returncode"] == 0
     return jsonify(result)
 
 
 @app.route("/api/python-scripts", methods=["GET"])
 def api_list_python_scripts():
-    return jsonify(_files(PYTHON_SCRIPT_DIR, ".py"))
+    return jsonify(_files(_script_dirs(current_user())[1], ".py"))
 
 
 @app.route("/api/python-scripts/save", methods=["POST"])
 def api_save_python_script():
     payload = request.get_json(silent=True) or {}
-    path, error = _safe_file(PYTHON_SCRIPT_DIR, str(payload.get("name") or ""), ".py")
+    path, error = _safe_file(_script_dirs(current_user())[1], str(payload.get("name") or ""), ".py")
     if error:
         return jsonify({"ok": False, "error": error})
     content = str(payload.get("content") or "")
@@ -239,7 +528,7 @@ def api_save_python_script():
 
 @app.route("/api/python-scripts/load", methods=["GET"])
 def api_load_python_script():
-    path, error = _safe_file(PYTHON_SCRIPT_DIR, request.args.get("name", ""), ".py")
+    path, error = _safe_file(_script_dirs(current_user())[1], request.args.get("name", ""), ".py")
     if error:
         return jsonify({"ok": False, "error": error})
     if not path.is_file():
@@ -250,7 +539,7 @@ def api_load_python_script():
 @app.route("/api/python-scripts/delete", methods=["POST"])
 def api_delete_python_script():
     payload = request.get_json(silent=True) or {}
-    path, error = _safe_file(PYTHON_SCRIPT_DIR, str(payload.get("name") or ""), ".py")
+    path, error = _safe_file(_script_dirs(current_user())[1], str(payload.get("name") or ""), ".py")
     if error:
         return jsonify({"ok": False, "error": error})
     if not path.is_file():
@@ -262,9 +551,10 @@ def api_delete_python_script():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print("=" * 56)
-    print(" CloudOps Forge 已启动")
+    print(f" {SITE_NAME} 已启动")
     print(f" 访问地址: http://127.0.0.1:{port}/")
     print(" Shell: 平台内置沙箱（不调用本机终端）")
     print(" Python: 浏览器 Pyodide 沙箱")
+    print(f" 题库: {len(CHALLENGES)} 题 · 进度: {store.path}")
     print("=" * 56)
     app.run(host="127.0.0.1", port=port, debug=False, threaded=True)

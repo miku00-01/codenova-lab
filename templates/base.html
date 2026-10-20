@@ -4,22 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#f6f7fb">
-    <title>{% block title %}CloudOps Forge{% endblock %}</title>
+    <title>{% block title %}{{ site_name }}{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <header class="topbar">
         <div class="topbar-inner">
-            <a href="{{ url_for('index') }}" class="logo" aria-label="CloudOps Forge 首页">
+            <a href="{{ url_for('index') }}" class="logo" aria-label="{{ site_name }} 首页">
                 <span class="logo-mark" aria-hidden="true">⌘</span>
-                <span>CloudOps Forge</span>
+                <span>{{ site_name }}</span>
             </a>
             <nav aria-label="主导航">
                 <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">首页</a>
                 <a href="{{ url_for('practice') }}" class="{{ 'active' if request.endpoint == 'practice' else '' }}">代码任务</a>
-                <a href="{{ url_for('editor') }}" class="{{ 'active' if request.endpoint == 'editor' else '' }}">Shell</a>
-                <a href="{{ url_for('python_editor') }}" class="{{ 'active' if request.endpoint == 'python_editor' else '' }}">Python</a>
+                <a href="{{ url_for('editor') }}" class="{{ 'active' if request.endpoint in ('editor', 'python_editor') else '' }}">编辑器</a>
                 <a href="{{ url_for('terminal') }}" class="{{ 'active' if request.endpoint == 'terminal' else '' }}">Linux 沙箱</a>
+                {% if progress is defined and progress %}
+                <span class="nav-progress" title="已完成 {{ progress.solved_count }} / {{ progress.total }} 个任务">
+                    ✓ {{ progress.solved_count }}/{{ progress.total }}
+                </span>
+                {% endif %}
             </nav>
             <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换深色模式" title="切换深色模式">☾</button>
         </div>
@@ -30,7 +34,7 @@
     </main>
 
     <footer class="footer">
-        <span>CloudOps Forge · 在隔离环境里放心练习代码</span>
+        <span>{{ site_name }} · 在隔离环境里放心练习代码</span>
         <span>Shell 与 Linux 使用平台沙箱 · Python 在浏览器中运行</span>
     </footer>
     <script>
@@ -42,12 +46,12 @@
             toggle.setAttribute('aria-label', dark ? '切换浅色模式' : '切换深色模式');
         };
         let dark = false;
-        try { dark = localStorage.getItem('cloudops-theme') === 'dark'; } catch (_) {}
+        try { dark = localStorage.getItem('codenova-theme') === 'dark'; } catch (_) {}
         apply(dark);
         toggle.addEventListener('click', () => {
             dark = !dark;
             apply(dark);
-            try { localStorage.setItem('cloudops-theme', dark ? 'dark' : 'light'); } catch (_) {}
+            try { localStorage.setItem('codenova-theme', dark ? 'dark' : 'light'); } catch (_) {}
         });
     })();
     </script>

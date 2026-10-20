@@ -1,66 +1,52 @@
-"""Small, self-contained coding tasks for the browser editors."""
+# -*- coding: utf-8 -*-
+"""从 ``data/challenges.json`` 加载练习题。
 
-CHALLENGES = [
-    {
-        "id": "shell-hello",
-        "language": "shell",
-        "level": "入门",
-        "title": "输出第一行文本",
-        "summary": "修改 echo 命令，让脚本输出指定文字。",
-        "goal": "运行后只输出 Hello, Code Lab。",
-        "starter": '#!/bin/bash\n# 修改下面这一行\necho "待完成"\n',
-        "expected": "Hello, Code Lab",
-    },
-    {
-        "id": "shell-variable",
-        "language": "shell",
-        "level": "入门",
-        "title": "使用变量",
-        "summary": "修改变量的值，再用它组合输出。",
-        "goal": "运行后只输出 Hello, Alice。",
-        "starter": '#!/bin/bash\nname="待填写"\necho "Hello, $name"\n',
-        "expected": "Hello, Alice",
-    },
-    {
-        "id": "shell-loop",
-        "language": "shell",
-        "level": "进阶",
-        "title": "遍历列表",
-        "summary": "补全列表，让循环逐行输出三个词。",
-        "goal": "依次输出 alpha、beta、gamma，每个词占一行。",
-        "starter": '#!/bin/bash\nitems="alpha beta"\nfor item in $items; do\n  echo "$item"\ndone\n',
-        "expected": "alpha\nbeta\ngamma",
-    },
-    {
-        "id": "python-hello",
-        "language": "python",
-        "level": "入门",
-        "title": "输出第一行 Python",
-        "summary": "调用 print 输出指定文字。",
-        "goal": "运行后只输出 Hello, Code Lab。",
-        "starter": 'print("待完成")\n',
-        "expected": "Hello, Code Lab",
-    },
-    {
-        "id": "python-sum",
-        "language": "python",
-        "level": "入门",
-        "title": "计算列表总和",
-        "summary": "修改数字列表，练习变量与 sum 函数。",
-        "goal": "运行后只输出数字 12。",
-        "starter": 'numbers = [2, 4]\nprint(sum(numbers))\n',
-        "expected": "12",
-    },
-    {
-        "id": "python-count",
-        "language": "python",
-        "level": "进阶",
-        "title": "统计出现次数",
-        "summary": "用 Counter 统计列表中的词。",
-        "goal": "运行后只输出 3。",
-        "starter": 'from collections import Counter\n\nwords = ["cat", "dog", "cat", "cat"]\ncounts = Counter(words)\nprint(0)  # 改为输出 cat 的次数\n',
-        "expected": "3",
-    },
-]
+题目从代码里挪到数据文件，改题/加题不用动 Python；模块仍然导出
+``CHALLENGES`` 与 ``CHALLENGES_BY_ID``，旧调用方（模板、测试）无需改动。
+"""
 
-CHALLENGES_BY_ID = {item["id"]: item for item in CHALLENGES}
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+DATA_FILE = Path(__file__).resolve().parent / "data" / "challenges.json"
+
+_REQUIRED = ("id", "language", "level", "title", "summary", "goal", "starter", "expected")
+
+
+def _load() -> list[dict]:
+    raw = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise ValueError("challenges.json 应该是一个数组")
+    seen: set[str] = set()
+    for index, item in enumerate(raw, 1):
+        missing = [key for key in _REQUIRED if key not in item]
+        if missing:
+            raise ValueError(f"第 {index} 题缺少字段: {', '.join(missing)}")
+        if item["id"] in seen:
+            raise ValueError(f"题目 id 重复: {item['id']}")
+        seen.add(item["id"])
+        if item["language"] not in ("shell", "python"):
+            raise ValueError(f"{item['id']} 的语言只能是 shell 或 python")
+    return raw
+
+
+CHALLENGES: list[dict] = _load()
+CHALLENGES_BY_ID: dict[str, dict] = {item["id"]: item for item in CHALLENGES}
+
+
+def by_language(language: str) -> list[dict]:
+    return [item for item in CHALLENGES if item["language"] == language]
+
+
+def next_challenge(challenge_id: str) -> dict | None:
+    """返回同语言的下一个任务，用于「做对了，下一题」。"""
+    current = CHALLENGES_BY_ID.get(challenge_id)
+    if not current:
+        return None
+    siblings = by_language(current["language"])
+    for index, item in enumerate(siblings):
+        if item["id"] == challenge_id and index + 1 < len(siblings):
+            return siblings[index + 1]
+    return None

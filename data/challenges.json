@@ -1,0 +1,145 @@
+[
+  {
+    "id": "shell-hello",
+    "language": "shell",
+    "level": "入门",
+    "title": "输出第一行文本",
+    "summary": "修改 echo 命令，让脚本输出指定文字。",
+    "goal": "运行后只输出 Hello, Code Lab。",
+    "starter": "#!/bin/bash\n# 修改下面这一行\necho \"待完成\"\n",
+    "expected": ["Hello, Code Lab", "Hello,Code Lab"],
+    "hint": "echo 后面的内容就是输出的文字，注意逗号和空格。"
+  },
+  {
+    "id": "shell-variable",
+    "language": "shell",
+    "level": "入门",
+    "title": "使用变量",
+    "summary": "修改变量的值，再用它组合输出。",
+    "goal": "运行后只输出 Hello, Alice。",
+    "starter": "#!/bin/bash\nname=\"待填写\"\necho \"Hello, $name\"\n",
+    "expected": "Hello, Alice",
+    "hint": "把 name 的值改成 Alice，双引号里的 $name 会被替换。"
+  },
+  {
+    "id": "shell-loop",
+    "language": "shell",
+    "level": "进阶",
+    "title": "遍历列表",
+    "summary": "补全列表，让循环逐行输出三个词。",
+    "goal": "依次输出 alpha、beta、gamma，每个词占一行。",
+    "starter": "#!/bin/bash\nitems=\"alpha beta\"\nfor item in $items; do\n  echo \"$item\"\ndone\n",
+    "expected": "alpha\nbeta\ngamma",
+    "hint": "items 里用空格分隔，for 会逐个取值。"
+  },
+  {
+    "id": "shell-glob",
+    "language": "shell",
+    "level": "入门",
+    "title": "用通配符挑文件",
+    "summary": "练习 * 通配符：只统计 .log 文件的行数。",
+    "goal": "运行后只输出 2（两个 .log 文件）。",
+    "starter": "#!/bin/bash\ncd /tmp\ntouch note1.log note2.log report.txt\n# 用 *.log 只列出日志文件，再数行数\nls -l report.txt | wc -l\n",
+    "expected": "2",
+    "hint": "把 report.txt 换成 *.log，Shell 会先展开成两个文件名。"
+  },
+  {
+    "id": "shell-redirect",
+    "language": "shell",
+    "level": "入门",
+    "title": "把输出写进文件",
+    "summary": "练习覆盖写入 > 与追加写入 >>。",
+    "goal": "运行后输出两行：nginx 和 mysql。",
+    "starter": "#!/bin/bash\ncd /tmp\n# 第一行覆盖写入，第二行追加写入\necho \"nginx\" > services.txt\necho \"loading\" >> services.txt\ncat services.txt\n",
+    "expected": "nginx\nmysql",
+    "hint": "> 会清空文件后写入，>> 会在末尾追加，别把第二行写成覆盖。"
+  },
+  {
+    "id": "shell-condition",
+    "language": "shell",
+    "level": "进阶",
+    "title": "条件判断 if",
+    "summary": "用 [ -f ] 判断文件是否存在，再决定输出。",
+    "goal": "运行后输出 部署就绪。",
+    "starter": "#!/bin/bash\ncd /tmp\ntouch ready.flag\nif [ -f missing.flag ]; then\n  echo \"部署就绪\"\nelse\n  echo \"等待中\"\nfi\n",
+    "expected": "部署就绪",
+    "hint": "判断的文件名要和 touch 创建的那个一致。"
+  },
+  {
+    "id": "shell-grep-count",
+    "language": "shell",
+    "level": "进阶",
+    "title": "统计日志错误条数",
+    "summary": "用管道把 cat 的输出交给 grep -c 计数。",
+    "goal": "运行后只输出 1（日志里有一条 ERROR）。",
+    "starter": "#!/bin/bash\n# app.log 里有一行 ERROR\ncat /var/log/app.log | grep ERROR | wc -l\n",
+    "expected": "1",
+    "hint": "grep -c 可以直接数出匹配行数，比 wc -l 更直接。"
+  },
+  {
+    "id": "python-hello",
+    "language": "python",
+    "level": "入门",
+    "title": "输出第一行 Python",
+    "summary": "调用 print 输出指定文字。",
+    "goal": "运行后只输出 Hello, Code Lab。",
+    "starter": "print(\"待完成\")\n",
+    "expected": ["Hello, Code Lab", "Hello,Code Lab"],
+    "hint": "print 的括号里放要显示的文字，注意它是字符串。"
+  },
+  {
+    "id": "python-sum",
+    "language": "python",
+    "level": "入门",
+    "title": "计算列表总和",
+    "summary": "修改数字列表，练习变量与 sum 函数。",
+    "goal": "运行后只输出数字 12。",
+    "starter": "numbers = [2, 4]\nprint(sum(numbers))\n",
+    "expected": ["12", "12.0"],
+    "hint": "sum 会把列表里的数全加起来，改列表里的数字即可。"
+  },
+  {
+    "id": "python-fstring",
+    "language": "python",
+    "level": "入门",
+    "title": "用 f-string 拼句子",
+    "summary": "把变量嵌进字符串，输出一句完整的话。",
+    "goal": "运行后只输出 Alice 今年 30 岁。",
+    "starter": "name = \"Alice\"\nage = 30\nprint(\"name 今年 age 岁\")\n",
+    "expected": "Alice 今年 30 岁",
+    "hint": "在字符串前面加 f，再用 {name}、{age} 把变量放进去。"
+  },
+  {
+    "id": "python-listcomp",
+    "language": "python",
+    "level": "进阶",
+    "title": "列表推导式求平方",
+    "summary": "用一行列表推导式生成平方列表。",
+    "goal": "运行后输出 [1, 4, 9, 16]。",
+    "starter": "numbers = [1, 2, 3, 4]\nprint(numbers)\n",
+    "expected": "[1, 4, 9, 16]",
+    "hint": "写法是 [n * n for n in numbers]。"
+  },
+  {
+    "id": "python-count",
+    "language": "python",
+    "level": "进阶",
+    "title": "统计出现次数",
+    "summary": "用 Counter 统计列表中的词。",
+    "goal": "运行后只输出 3。",
+    "starter": "from collections import Counter\n\nwords = [\"cat\", \"dog\", \"cat\", \"cat\"]\ncounts = Counter(words)\nprint(0)  # 改为输出 cat 的次数\n",
+    "expected": "3",
+    "hint": "Counter 统计好后，counts[\"cat\"] 就是次数。"
+  },
+  {
+    "id": "python-dict-max",
+    "language": "python",
+    "level": "进阶",
+    "title": "找出分数最高的人",
+    "summary": "用 max 的 key 参数从字典里挑最大值。",
+    "goal": "运行后只输出 bob。",
+    "starter": "scores = {\"alice\": 88, \"bob\": 95, \"carol\": 72}\nprint(\"alice\")\n",
+    "expected": "bob",
+    "hint": "max(scores, key=scores.get) 会返回分数最高的那个键。"
+  }
+]
