@@ -1,0 +1,22 @@
+services:
+  cloudops-forge:
+    build: .
+    container_name: cloudops-forge
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18083:8000"
+    environment:
+      APP_AUTH_ENABLED: "${APP_AUTH_ENABLED:-1}"
+      APP_USERNAME: "${APP_USERNAME:?请在 .env 中设置 APP_USERNAME}"
+      APP_PASSWORD: "${APP_PASSWORD:?请在 .env 中设置 APP_PASSWORD}"
+    volumes:
+      - ./scripts:/app/scripts
+      - ./python_scripts:/app/python_scripts
+      - ./sandbox:/app/sandbox
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777

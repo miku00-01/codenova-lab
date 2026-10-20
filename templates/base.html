@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f6f7fb">
+    <title>{% block title %}CloudOps Forge{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <a href="{{ url_for('index') }}" class="logo" aria-label="CloudOps Forge 首页">
+                <span class="logo-mark" aria-hidden="true">⌘</span>
+                <span>CloudOps Forge</span>
+            </a>
+            <nav aria-label="主导航">
+                <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">首页</a>
+                <a href="{{ url_for('practice') }}" class="{{ 'active' if request.endpoint == 'practice' else '' }}">代码任务</a>
+                <a href="{{ url_for('editor') }}" class="{{ 'active' if request.endpoint == 'editor' else '' }}">Shell</a>
+                <a href="{{ url_for('python_editor') }}" class="{{ 'active' if request.endpoint == 'python_editor' else '' }}">Python</a>
+                <a href="{{ url_for('terminal') }}" class="{{ 'active' if request.endpoint == 'terminal' else '' }}">Linux 沙箱</a>
+            </nav>
+            <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换深色模式" title="切换深色模式">☾</button>
+        </div>
+    </header>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <span>CloudOps Forge · 在隔离环境里放心练习代码</span>
+        <span>Shell 与 Linux 使用平台沙箱 · Python 在浏览器中运行</span>
+    </footer>
+    <script>
+    (() => {
+        const toggle = document.getElementById('themeToggle');
+        const apply = (dark) => {
+            document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+            toggle.textContent = dark ? '☀' : '☾';
+            toggle.setAttribute('aria-label', dark ? '切换浅色模式' : '切换深色模式');
+        };
+        let dark = false;
+        try { dark = localStorage.getItem('cloudops-theme') === 'dark'; } catch (_) {}
+        apply(dark);
+        toggle.addEventListener('click', () => {
+            dark = !dark;
+            apply(dark);
+            try { localStorage.setItem('cloudops-theme', dark ? 'dark' : 'light'); } catch (_) {}
+        });
+    })();
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

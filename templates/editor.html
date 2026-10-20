@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Shell 编辑器 - CloudOps Forge{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>📝 Shell 脚本编辑器</h2>
+    <p class="muted-line">
+        脚本只在平台内置沙箱中解释执行，不调用 CMD、PowerShell、Git Bash 或 WSL。支持常用命令、变量、基础 for 循环、管道和重定向。
+    </p>
+    {% if challenge %}
+    <div class="task-banner">
+        <a href="{{ url_for('practice') }}" class="back-link">← 返回代码任务</a>
+        <h3>{{ challenge.title }}</h3>
+        <p>{{ challenge.goal }}</p>
+        <div class="expected-line">预期输出 <code>{{ challenge.expected }}</code></div>
+        <div class="challenge-feedback" id="challengeFeedback" role="status" aria-live="polite"></div>
+    </div>
+    {% endif %}
+
+    <div class="editor-layout">
+        <div class="file-list">
+            <h3>📂 Shell 脚本</h3>
+            <div id="fileList">
+                {% for name in scripts %}<button class="file-item" data-name="{{ name }}">{{ name }}</button>{% else %}<p class="muted-small">暂无脚本</p>{% endfor %}
+            </div>
+            <div class="file-actions">
+                <button class="btn btn-secondary" id="newBtn">➕ 新建</button>
+                <button class="btn btn-danger" id="delBtn">🗑 删除</button>
+            </div>
+        </div>
+
+        <div class="editor-panel">
+            <div class="editor-toolbar">
+                <input type="text" id="fileName" value="health_check.sh" aria-label="Shell 文件名">
+                <button class="btn btn-secondary" id="saveBtn">💾 保存</button>
+                <button class="btn btn-primary" id="runBtn">▶️ 沙箱运行</button>
+            </div>
+            <div class="editor-box">
+                <textarea id="codeEditor" spellcheck="false">#!/bin/bash
+# 在这里写 Shell 代码，运行时只访问平台沙箱
+items="alpha beta gamma"
+for item in $items; do
+  echo "$item"
+done</textarea>
+            </div>
+            <div class="run-output" id="runOutput"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const editor = document.getElementById('codeEditor');
+const fileName = document.getElementById('fileName');
+const fileList = document.getElementById('fileList');
+const runOutput = document.getElementById('runOutput');
+const challenge = {{ challenge|tojson }};
+const feedback = document.getElementById('challengeFeedback');
+if (challenge) {
+    fileName.value = challenge.id + '.sh';
+    editor.value = challenge.starter;
+}
+function showChallengeResult(actual, success) {
+    if (!challenge || !feedback) return;
+    const normalize = value => String(value || '').replace(/\r\n/g, '\n').trim();
+    const matched = success && normalize(actual) === normalize(challenge.expected);
+    feedback.textContent = matched ? '✓ 输出与目标一致，任务完成' : '再试一次：对照预期输出检查代码和运行结果';
+    feedback.className = 'challenge-feedback ' + (matched ? 'passed' : 'retry');
+}
+
+async function request(url, options) {
+    const response = await fetch(url, options);
+    return response.json();
+}
+async function loadScript(name) {
+    const data = await request('{{ url_for("api_load_script") }}?name=' + encodeURIComponent(name));
+    if (!data.ok) return alert(data.error || '加载失败');
+    fileName.value = data.name;
+    editor.value = data.content;
+}
+async function refreshList() {
+    const data = await request('{{ url_for("api_list_scripts") }}');
+    fileList.innerHTML = data.length ? '' : '<p class="muted-small">暂无脚本</p>';
+    data.forEach(item => {
+        const button = document.createElement('button');
+        button.className = 'file-item';
+        button.textContent = item.name;
+        button.onclick = () => loadScript(item.name);
+        fileList.appendChild(button);
+    });
+}
+async function save() {
+    const data = await request('{{ url_for("api_save_script") }}', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: fileName.value, content: editor.value})
+    });
+    if (!data.ok) throw new Error(data.error || '保存失败');
+    fileName.value = data.name;
+    await refreshList();
+    return data.name;
+}
+document.getElementById('saveBtn').onclick = async () => {
+    try { const name = await save(); alert('已保存：' + name); } catch (error) { alert(error.message); }
+};
+document.getElementById('runBtn').onclick = async () => {
+    runOutput.classList.add('show');
+    runOutput.textContent = '正在平台沙箱中运行…';
+    try {
+        const name = await save();
+        const data = await request('{{ url_for("api_run_script") }}', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, cwd: '/home/student'})
+        });
+        let output = data.stdout || '';
+        if (data.stderr) output += (output ? '\n' : '') + '[错误]\n' + data.stderr;
+        output += `\n[退出码: ${data.returncode}]`;
+        runOutput.textContent = output;
+        showChallengeResult(data.stdout, data.returncode === 0 && !data.stderr);
+    } catch (error) { runOutput.textContent = '[错误] ' + error.message; showChallengeResult('', false); }
+};
+document.getElementById('newBtn').onclick = () => {
+    fileName.value = 'new_script.sh';
+    editor.value = '#!/bin/bash\n# 新脚本：运行在平台沙箱\necho "Hello, Code Lab"\n';
+    runOutput.classList.remove('show');
+};
+document.getElementById('delBtn').onclick = async () => {
+    if (!confirm('只删除平台 scripts 目录中的 ' + fileName.value + '，确定吗？')) return;
+    const data = await request('{{ url_for("api_delete_script") }}', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: fileName.value})
+    });
+    if (!data.ok) return alert(data.error || '删除失败');
+    document.getElementById('newBtn').click();
+    refreshList();
+};
+document.querySelectorAll('.file-item[data-name]').forEach(button => button.onclick = () => loadScript(button.dataset.name));
+refreshList();
+</script>
+{% endblock %}

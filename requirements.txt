@@ -1,0 +1,2 @@
+flask>=2.3.0
+gunicorn>=23.0.0,<24.0.0; platform_system != "Windows"

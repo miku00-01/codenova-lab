@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}代码任务 - CloudOps Forge{% endblock %}
+{% block content %}
+<section class="page-intro">
+    <span class="eyebrow">⌘ &nbsp; 练习路径</span>
+    <h1>代码任务</h1>
+    <p>挑一个小目标，打开带起始代码的编辑器。运行后，平台会对照预期输出提示结果。</p>
+</section>
+
+<div class="filter-row" role="group" aria-label="按语言筛选任务">
+    <button class="filter-chip active" data-filter="all" type="button">全部 <span>{{ challenges|length }}</span></button>
+    <button class="filter-chip" data-filter="python" type="button">Python</button>
+    <button class="filter-chip" data-filter="shell" type="button">Shell</button>
+</div>
+
+<div class="challenge-grid" id="challengeGrid">
+    {% for challenge in challenges %}
+    <article class="challenge-card" data-language="{{ challenge.language }}">
+        <div class="challenge-top"><span class="language-chip">{{ challenge.language|upper }}</span><span class="level-chip">{{ challenge.level }}</span></div>
+        <h2>{{ challenge.title }}</h2>
+        <p>{{ challenge.summary }}</p>
+        <div class="challenge-goal"><span>目标</span>{{ challenge.goal }}</div>
+        <a class="card-link" href="{{ url_for('python_editor' if challenge.language == 'python' else 'editor', challenge=challenge.id) }}">开始练习 →</a>
+    </article>
+    {% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll('[data-filter]').forEach(button => {
+    button.addEventListener('click', () => {
+        document.querySelectorAll('[data-filter]').forEach(item => item.classList.toggle('active', item === button));
+        document.querySelectorAll('[data-language]').forEach(card => {
+            card.hidden = button.dataset.filter !== 'all' && card.dataset.language !== button.dataset.filter;
+        });
+    });
+});
+</script>
+{% endblock %}

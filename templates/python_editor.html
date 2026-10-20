@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Python 编辑器 - CloudOps Forge{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>🐍 Python 浏览器编辑器</h2>
+    <p class="muted-line">
+        Python 通过项目内自带的 Pyodide 在浏览器 WebAssembly 沙箱中执行，不启动电脑上的 Python，也不能直接读取电脑文件。首次打开需加载约几十 MB 的本地运行组件。
+    </p>
+    {% if challenge %}
+    <div class="task-banner">
+        <a href="{{ url_for('practice') }}" class="back-link">← 返回代码任务</a>
+        <h3>{{ challenge.title }}</h3>
+        <p>{{ challenge.goal }}</p>
+        <div class="expected-line">预期输出 <code>{{ challenge.expected }}</code></div>
+        <div class="challenge-feedback" id="challengeFeedback" role="status" aria-live="polite"></div>
+    </div>
+    {% endif %}
+    <div class="alert alert-info" id="pythonStatus"><b>运行环境：</b>等待加载，点击“运行”时自动启动。</div>
+
+    <div class="editor-layout">
+        <div class="file-list">
+            <h3>📂 Python 脚本</h3>
+            <div id="fileList">
+                {% for name in scripts %}<button class="file-item" data-name="{{ name }}">{{ name }}</button>{% else %}<p class="muted-small">暂无脚本</p>{% endfor %}
+            </div>
+            <div class="file-actions">
+                <button class="btn btn-secondary" id="newBtn">➕ 新建</button>
+                <button class="btn btn-danger" id="delBtn">🗑 删除</button>
+            </div>
+        </div>
+
+        <div class="editor-panel">
+            <div class="editor-toolbar">
+                <input type="text" id="fileName" value="log_summary.py" aria-label="Python 文件名">
+                <button class="btn btn-secondary" id="saveBtn">💾 保存</button>
+                <button class="btn btn-primary" id="runBtn">▶️ 浏览器运行</button>
+            </div>
+            <div class="editor-box python-box">
+                <textarea id="codeEditor" spellcheck="false"># 在这里写 Python 代码
+numbers = [2, 4, 6]
+print(sum(numbers))</textarea>
+            </div>
+            <div class="run-output" id="runOutput"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/pyodide/pyodide.js') }}"></script>
+<script>
+const editor = document.getElementById('codeEditor');
+const fileName = document.getElementById('fileName');
+const fileList = document.getElementById('fileList');
+const output = document.getElementById('runOutput');
+const statusBox = document.getElementById('pythonStatus');
+const challenge = {{ challenge|tojson }};
+const feedback = document.getElementById('challengeFeedback');
+if (challenge) {
+    fileName.value = challenge.id + '.py';
+    editor.value = challenge.starter;
+}
+function showChallengeResult(actual, success) {
+    if (!challenge || !feedback) return;
+    const normalize = value => String(value || '').replace(/\r\n/g, '\n').trim();
+    const matched = success && normalize(actual) === normalize(challenge.expected);
+    feedback.textContent = matched ? '✓ 输出与目标一致，任务完成' : '再试一次：对照预期输出检查代码和运行结果';
+    feedback.className = 'challenge-feedback ' + (matched ? 'passed' : 'retry');
+}
+let pyodideInstance = null;
+let loadingPromise = null;
+
+async function request(url, options) {
+    const response = await fetch(url, options);
+    return response.json();
+}
+async function ensurePython() {
+    if (pyodideInstance) return pyodideInstance;
+    if (!loadingPromise) {
+        statusBox.innerHTML = '<b>运行环境：</b>正在从平台本地加载 Python WebAssembly…';
+        loadingPromise = loadPyodide({indexURL: "{{ url_for('static', filename='vendor/pyodide/') }}"})
+            .then(instance => {
+                pyodideInstance = instance;
+                statusBox.innerHTML = '<b>运行环境：</b>Python ' + instance.runPython('import sys; sys.version.split()[0]') + ' · 浏览器沙箱已就绪';
+                return instance;
+            })
+            .catch(error => {
+                loadingPromise = null;
+                statusBox.innerHTML = '<b>运行环境加载失败：</b>' + error.message;
+                throw error;
+            });
+    }
+    return loadingPromise;
+}
+async function refreshList() {
+    const data = await request('{{ url_for("api_list_python_scripts") }}');
+    fileList.innerHTML = data.length ? '' : '<p class="muted-small">暂无脚本</p>';
+    data.forEach(item => {
+        const button = document.createElement('button');
+        button.className = 'file-item';
+        button.textContent = item.name;
+        button.onclick = () => loadScript(item.name);
+        fileList.appendChild(button);
+    });
+}
+async function loadScript(name) {
+    const data = await request('{{ url_for("api_load_python_script") }}?name=' + encodeURIComponent(name));
+    if (!data.ok) return alert(data.error || '加载失败');
+    fileName.value = data.name;
+    editor.value = data.content;
+}
+async function save() {
+    const data = await request('{{ url_for("api_save_python_script") }}', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: fileName.value, content: editor.value})
+    });
+    if (!data.ok) throw new Error(data.error || '保存失败');
+    fileName.value = data.name;
+    await refreshList();
+    return data.name;
+}
+document.getElementById('runBtn').onclick = async () => {
+    output.classList.add('show');
+    output.textContent = '正在加载浏览器 Python…';
+    try {
+        await save();
+        const pyodide = await ensurePython();
+        pyodide.globals.set('__cloudops_user_code__', editor.value);
+        const result = await pyodide.runPythonAsync(`
+import contextlib, io, traceback
+_out = io.StringIO()
+_err = io.StringIO()
+_scope = {"__name__": "__main__"}
+try:
+    with contextlib.redirect_stdout(_out), contextlib.redirect_stderr(_err):
+        exec(compile(__cloudops_user_code__, "<cloudops-editor>", "exec"), _scope)
+except BaseException:
+    traceback.print_exc(file=_err)
+(_out.getvalue(), _err.getvalue())
+        `);
+        const values = result.toJs();
+        result.destroy();
+        let text = values[0] || '';
+        if (values[1]) text += (text ? '\n' : '') + '[错误]\n' + values[1];
+        output.textContent = text || '（脚本执行完成，无输出）';
+        showChallengeResult(values[0], !values[1]);
+    } catch (error) {
+        output.textContent = '[运行环境错误] ' + error.message;
+        showChallengeResult('', false);
+    }
+};
+document.getElementById('saveBtn').onclick = async () => {
+    try { const name = await save(); alert('已保存：' + name); } catch (error) { alert(error.message); }
+};
+document.getElementById('newBtn').onclick = () => {
+    fileName.value = 'new_script.py';
+    editor.value = '# Python 浏览器沙箱\nprint("Hello, Code Lab")\n';
+    output.classList.remove('show');
+};
+document.getElementById('delBtn').onclick = async () => {
+    if (!confirm('只删除平台 python_scripts 目录中的 ' + fileName.value + '，确定吗？')) return;
+    const data = await request('{{ url_for("api_delete_python_script") }}', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: fileName.value})
+    });
+    if (!data.ok) return alert(data.error || '删除失败');
+    document.getElementById('newBtn').click();
+    refreshList();
+};
+document.querySelectorAll('.file-item[data-name]').forEach(button => button.onclick = () => loadScript(button.dataset.name));
+refreshList();
+</script>
+{% endblock %}

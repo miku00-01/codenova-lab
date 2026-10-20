@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Linux 练习沙箱 - CloudOps Forge{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>💻 Linux 练习沙箱</h2>
+    <p class="muted-line">
+        这是平台自己实现的虚拟 Shell，只能访问项目内的 <code>sandbox/</code> 目录，不会调用或读取电脑的终端、桌面和其他文件。
+        输入 <code>help</code> 查看命令。
+    </p>
+    <div class="quick-commands">
+        <button data-command="pwd">pwd</button>
+        <button data-command="ls -la">ls -la</button>
+        <button data-command="cat /var/log/app.log | grep ERROR">查错误日志</button>
+        <button data-command="df -h">df -h</button>
+        <button data-command="ss -lntp">ss -lntp</button>
+        <button data-command="systemctl status nginx">服务状态</button>
+    </div>
+
+    <div class="terminal-box">
+        <div class="terminal-head">
+            <span>● ● ●</span>
+            <span id="shellInfo">CloudOps Sandbox Shell</span>
+        </div>
+        <div class="terminal-body" id="terminalBody">
+            <div class="terminal-line terminal-out">CloudOps Linux 练习沙箱已就绪</div>
+            <div class="terminal-line terminal-out">所有命令均为平台内模拟，不会调用本机终端。试试：help、tree /、cat /var/log/app.log</div>
+        </div>
+        <div class="terminal-input-row">
+            <span class="terminal-prompt" id="prompt">student@cloudops-lab:/home/student$</span>
+            <input id="terminalInput" autocomplete="off" autofocus aria-label="沙箱命令">
+            <button id="runButton">运行</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const body = document.getElementById('terminalBody');
+const input = document.getElementById('terminalInput');
+const promptNode = document.getElementById('prompt');
+let cwd = '/home/student';
+const history = [];
+let historyIndex = 0;
+
+function appendLine(cls, text) {
+    const div = document.createElement('div');
+    div.className = 'terminal-line ' + cls;
+    div.textContent = text;
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
+}
+
+async function runCommand(command) {
+    const cmd = (command || input.value).trim();
+    if (!cmd) return;
+    appendLine('terminal-prompt', `student@cloudops-lab:${cwd}$ ${cmd}`);
+    history.push(cmd);
+    historyIndex = history.length;
+    input.value = '';
+    const response = await fetch('{{ url_for("api_terminal") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({command: cmd, cwd})
+    });
+    const data = await response.json();
+    if (data.clear) body.innerHTML = '';
+    if (data.stdout) appendLine('terminal-out', data.stdout);
+    if (data.stderr) appendLine('terminal-err', data.stderr);
+    cwd = data.cwd || cwd;
+    promptNode.textContent = `student@cloudops-lab:${cwd}$`;
+    document.getElementById('shellInfo').textContent = data.shell || 'CloudOps Sandbox Shell';
+}
+
+document.getElementById('runButton').onclick = () => runCommand();
+input.addEventListener('keydown', event => {
+    if (event.key === 'Enter') runCommand();
+    if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (historyIndex > 0) historyIndex--;
+        input.value = history[historyIndex] || '';
+    }
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        if (historyIndex < history.length) historyIndex++;
+        input.value = history[historyIndex] || '';
+    }
+});
+document.querySelectorAll('[data-command]').forEach(button => {
+    button.onclick = () => runCommand(button.dataset.command);
+});
+</script>
+{% endblock %}

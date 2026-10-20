@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+.venv/
+.venv_*/
+__pycache__/
+*.py[cod]
+sandbox/
+scripts/
+python_scripts/
+backup*/
+*.log
+*.bak

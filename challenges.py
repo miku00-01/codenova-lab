@@ -1,0 +1,66 @@
+"""Small, self-contained coding tasks for the browser editors."""
+
+CHALLENGES = [
+    {
+        "id": "shell-hello",
+        "language": "shell",
+        "level": "入门",
+        "title": "输出第一行文本",
+        "summary": "修改 echo 命令，让脚本输出指定文字。",
+        "goal": "运行后只输出 Hello, Code Lab。",
+        "starter": '#!/bin/bash\n# 修改下面这一行\necho "待完成"\n',
+        "expected": "Hello, Code Lab",
+    },
+    {
+        "id": "shell-variable",
+        "language": "shell",
+        "level": "入门",
+        "title": "使用变量",
+        "summary": "修改变量的值，再用它组合输出。",
+        "goal": "运行后只输出 Hello, Alice。",
+        "starter": '#!/bin/bash\nname="待填写"\necho "Hello, $name"\n',
+        "expected": "Hello, Alice",
+    },
+    {
+        "id": "shell-loop",
+        "language": "shell",
+        "level": "进阶",
+        "title": "遍历列表",
+        "summary": "补全列表，让循环逐行输出三个词。",
+        "goal": "依次输出 alpha、beta、gamma，每个词占一行。",
+        "starter": '#!/bin/bash\nitems="alpha beta"\nfor item in $items; do\n  echo "$item"\ndone\n',
+        "expected": "alpha\nbeta\ngamma",
+    },
+    {
+        "id": "python-hello",
+        "language": "python",
+        "level": "入门",
+        "title": "输出第一行 Python",
+        "summary": "调用 print 输出指定文字。",
+        "goal": "运行后只输出 Hello, Code Lab。",
+        "starter": 'print("待完成")\n',
+        "expected": "Hello, Code Lab",
+    },
+    {
+        "id": "python-sum",
+        "language": "python",
+        "level": "入门",
+        "title": "计算列表总和",
+        "summary": "修改数字列表，练习变量与 sum 函数。",
+        "goal": "运行后只输出数字 12。",
+        "starter": 'numbers = [2, 4]\nprint(sum(numbers))\n',
+        "expected": "12",
+    },
+    {
+        "id": "python-count",
+        "language": "python",
+        "level": "进阶",
+        "title": "统计出现次数",
+        "summary": "用 Counter 统计列表中的词。",
+        "goal": "运行后只输出 3。",
+        "starter": 'from collections import Counter\n\nwords = ["cat", "dog", "cat", "cat"]\ncounts = Counter(words)\nprint(0)  # 改为输出 cat 的次数\n',
+        "expected": "3",
+    },
+]
+
+CHALLENGES_BY_ID = {item["id"]: item for item in CHALLENGES}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}代码练习实验室 - CloudOps Forge{% endblock %}
+{% block content %}
+<section class="hero">
+    <span class="eyebrow">⌘ &nbsp; 代码练习实验室</span>
+    <h1>把想法写成代码</h1>
+    <p class="hero-lead">从第一行输出，到脚本与数据处理。打开编辑器，写下代码，马上运行。</p>
+    <p class="hero-note">清晰、简单、随时可以开始。</p>
+    <div class="hero-actions">
+        <a class="btn btn-primary" href="{{ url_for('practice') }}">开始做代码任务 <span aria-hidden="true">↗</span></a>
+        <a class="btn btn-secondary" href="{{ url_for('python_editor') }}">打开 Python 编辑器</a>
+    </div>
+    <div class="hero-meta">
+        <span>{{ challenge_count }} 个入门与进阶任务</span>
+        <span aria-hidden="true">·</span>
+        <span>浏览器里直接练习</span>
+    </div>
+</section>
+
+<section class="home-section" aria-labelledby="workspace-heading">
+    <div class="section-heading">
+        <div><span class="section-kicker">你的练习空间</span><h2 id="workspace-heading">选一个入口，开始动手</h2></div>
+        <a class="text-link" href="{{ url_for('practice') }}">查看全部任务 →</a>
+    </div>
+    <div class="module-grid">
+        <a href="{{ url_for('practice') }}" class="module-card featured-card">
+            <span class="card-icon">◎</span><span class="card-tag">从这里开始</span>
+            <h3>代码任务</h3>
+            <p>按目标修改起始代码，运行后对照预期输出。先完成小任务，再写自己的作品。</p>
+            <span class="card-link">探索 {{ challenge_count }} 个任务 ↗</span>
+        </a>
+        <a href="{{ url_for('python_editor') }}" class="module-card">
+            <span class="card-icon">Py</span>
+            <h3>Python 编辑器</h3>
+            <p>练习数据处理、文本解析与自动化逻辑。代码在浏览器的 Python 沙箱中运行。</p>
+            <span class="card-link">打开编辑器 ↗</span>
+        </a>
+        <a href="{{ url_for('editor') }}" class="module-card">
+            <span class="card-icon">$_</span>
+            <h3>Shell 编辑器</h3>
+            <p>编写变量、循环和管道脚本，在平台内置沙箱中保存与运行。</p>
+            <span class="card-link">编写脚本 ↗</span>
+        </a>
+        <a href="{{ url_for('terminal') }}" class="module-card">
+            <span class="card-icon">&gt;_</span>
+            <h3>Linux 沙箱</h3>
+            <p>直接输入命令，观察文件与日志的变化，熟悉命令行的基本操作。</p>
+            <span class="card-link">进入沙箱 ↗</span>
+        </a>
+    </div>
+</section>
+
+<section class="safety-note" aria-label="运行环境说明">
+    <span class="safety-symbol">✦</span>
+    <div><strong>放心试错</strong><p>Shell 与 Linux 只访问项目的练习沙箱；Python 在浏览器 WebAssembly 中运行，不会执行电脑上的系统命令。</p></div>
+</section>
+{% endblock %}
