@@ -1,0 +1,20 @@
+# 换行符：仓库内统一 LF，检出的 Windows 脚本用 CRLF（cmd 只认 CRLF）
+* text=auto
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.sh  text eol=lf
+*.md  text eol=lf
+*.py  text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+
+# 二进制资源
+*.wasm binary
+*.zip binary
+*.png binary
+*.jpg binary
+*.ico binary
