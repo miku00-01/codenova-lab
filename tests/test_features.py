@@ -194,6 +194,52 @@ class IsolationTests(unittest.TestCase):
         self.assertFalse(rate_limited(key, limit=2))
         self.assertTrue(rate_limited(key, limit=2))
 
+    def test_multi_user_gives_each_browser_its_own_progress(self):
+        old = app.config.get("MULTI_USER")
+        app.config["MULTI_USER"] = True
+        try:
+            # 注意：不要用嵌套的 with app.test_client()，那会共用同一个应用上下文。
+            alice = app.test_client()
+            bob = app.test_client()
+            # 第一次访问会各发一个身份 cookie
+            self.assertEqual(alice.get("/api/progress").status_code, 200)
+            self.assertEqual(bob.get("/api/progress").status_code, 200)
+            alice_cookie = alice.get_cookie("codenova_user").value
+            bob_cookie = bob.get_cookie("codenova_user").value
+            self.assertNotEqual(alice_cookie, bob_cookie)
+            self.assertTrue(alice_cookie.startswith("u"))
+
+            alice.post(
+                "/api/check",
+                json={
+                    "challenge_id": "python-hello",
+                    "source": "print('Hello, Code Lab')",
+                    "stdout": "Hello, Code Lab",
+                },
+            )
+            self.assertEqual(alice.get("/api/progress").get_json()["solved_count"], 1)
+            # 另一个浏览器看不到别人做到哪
+            self.assertEqual(bob.get("/api/progress").get_json()["solved_count"], 0)
+
+            # 各自的沙箱目录也要分开
+            self.assertNotEqual(
+                app_module._shell_root(alice_cookie),
+                app_module._shell_root(bob_cookie),
+            )
+        finally:
+            app.config["MULTI_USER"] = old
+
+    def test_single_user_mode_shares_one_identity(self):
+        old = app.config.get("MULTI_USER")
+        app.config["MULTI_USER"] = False
+        try:
+            first = app.test_client()
+            second = app.test_client()
+            self.assertEqual(first.get("/api/progress").get_json()["user"], "guest")
+            self.assertEqual(second.get("/api/progress").get_json()["user"], "guest")
+        finally:
+            app.config["MULTI_USER"] = old
+
 
 class ChallengeDataTests(unittest.TestCase):
     def test_challenge_ids_are_unique_and_linked(self):

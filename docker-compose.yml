@@ -10,6 +10,7 @@ services:
       APP_USERNAME: "${APP_USERNAME:?请在 .env 中设置 APP_USERNAME}"
       APP_PASSWORD: "${APP_PASSWORD:?请在 .env 中设置 APP_PASSWORD}"
       SITE_NAME: "${SITE_NAME:-Codenova 实验室}"
+      MULTI_USER: "${MULTI_USER:-0}"
       TERMINAL_RATE_LIMIT: "${TERMINAL_RATE_LIMIT:-60}"
     volumes:
       - ./data:/app/data

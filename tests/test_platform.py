@@ -48,22 +48,22 @@ class PlatformTests(unittest.TestCase):
         self.assertIn("numbers = [2, 4]", python_page)
 
     def test_reverse_proxy_prefix_links(self):
-        response = self.client.get("/", headers={"X-Forwarded-Prefix": "/cloudops"})
+        response = self.client.get("/", headers={"X-Forwarded-Prefix": "/codenova"})
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'href="/cloudops/terminal"', response.data)
-        self.assertIn(b'href="/cloudops/static/style.css"', response.data)
+        self.assertIn(b'href="/codenova/terminal"', response.data)
+        self.assertIn(b'href="/codenova/static/style.css"', response.data)
 
     def test_optional_basic_authentication(self):
         old_auth_enabled = app.config.get("APP_AUTH_ENABLED")
         old_user = app.config.get("APP_USERNAME")
         old_password = app.config.get("APP_PASSWORD")
-        app.config.update(APP_AUTH_ENABLED=True, APP_USERNAME="cloudops", APP_PASSWORD="test-password")
+        app.config.update(APP_AUTH_ENABLED=True, APP_USERNAME="student", APP_PASSWORD="test-password")
         try:
             response = self.client.get("/")
             self.assertEqual(response.status_code, 401)
             self.assertIn("Basic", response.headers["WWW-Authenticate"])
 
-            token = base64.b64encode(b"cloudops:test-password").decode("ascii")
+            token = base64.b64encode(b"student:test-password").decode("ascii")
             response = self.client.get("/", headers={"Authorization": f"Basic {token}"})
             self.assertEqual(response.status_code, 200)
 
@@ -79,7 +79,7 @@ class PlatformTests(unittest.TestCase):
         old_auth_enabled = app.config.get("APP_AUTH_ENABLED")
         old_user = app.config.get("APP_USERNAME")
         old_password = app.config.get("APP_PASSWORD")
-        app.config.update(APP_AUTH_ENABLED=False, APP_USERNAME="cloudops", APP_PASSWORD="test-password")
+        app.config.update(APP_AUTH_ENABLED=False, APP_USERNAME="student", APP_PASSWORD="test-password")
         try:
             self.assertEqual(self.client.get("/").status_code, 200)
         finally:

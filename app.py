@@ -62,16 +62,22 @@ app.config["APP_AUTH_ENABLED"] = os.environ.get("APP_AUTH_ENABLED", "1").strip()
     "no",
     "off",
 }
-# 只有「开了登录保护 + 配置了账号」才算多用户部署，此时每个用户独占沙箱与脚本目录。
-app.config["MULTI_USER"] = bool(
-    app.config["APP_AUTH_ENABLED"]
-    and str(app.config["APP_USERNAME"] or "").strip()
-)
+# 多用户模式：同一个站点的每个浏览器（cookie）各自拥有独立的进度、脚本目录与 Sandbox。
+# 默认关闭时，登录名（或固定的 guest）就是唯一身份，适合自己一个人用。
+app.config["MULTI_USER"] = os.environ.get("MULTI_USER", "0").strip().lower() not in {
+    "",
+    "0",
+    "false",
+    "no",
+    "off",
+}
 app.config["TERMINAL_RATE_LIMIT"] = int(os.environ.get("TERMINAL_RATE_LIMIT", "60") or 60)
 
 try:  # 可选依赖：没装也能跑，只是不压缩
     from flask_compress import Compress  # type: ignore
 
+    # 注意：Flask 的静态文件（含 8MB 的 pyodide.asm.wasm）走 send_file 直通，这里压不了，
+    # 那部分交给 Nginx 的 gzip_types application/wasm 处理；这里压的是 HTML / JSON 等。
     Compress(app)
 except Exception:  # pragma: no cover - 依赖缺失时的降级
     pass
@@ -86,15 +92,20 @@ def _slug(value: str) -> str:
 
 
 def current_user() -> str:
-    """登录用户名优先；未登录时用 cookie 里的匿名 id，保证进度不串号。"""
+    """多用户模式下用 cookie 里的匿名 id 区分每个人；单用户模式用登录名或固定 guest。"""
     if getattr(g, "user", None):
         return g.user
+
+    multi_user = bool(app.config.get("MULTI_USER"))
+    cookie_id = str(request.cookies.get(USER_COOKIE) or "").strip()
     username = ""
-    if app.config.get("APP_AUTH_ENABLED") and request.authorization:
+    if not multi_user and app.config.get("APP_AUTH_ENABLED") and request.authorization:
         username = str(request.authorization.username or "").strip()
-    user = username or str(request.cookies.get(USER_COOKIE) or "").strip()
+
+    user = cookie_id or username
     if not user:
-        user = "guest" if not app.config.get("MULTI_USER") else "u" + secrets.token_hex(8)
+        # 多用户模式：给每个新浏览器分配一个随机身份，之后的进度和沙箱都挂在它下面。
+        user = "u" + secrets.token_hex(8) if multi_user else "guest"
         g.new_cookie = True
     g.user = user
     return user

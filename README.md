@@ -38,6 +38,7 @@ python app.py
 | `SITE_NAME` | 站点名称，同时用于登录提示与浏览器标题 | `Codenova 实验室` |
 | `APP_AUTH_ENABLED` | 是否启用整站 HTTP Basic 登录保护 | `1` |
 | `APP_USERNAME` / `APP_PASSWORD` | 登录账号和密码，两者都为空时免登录 | 空 |
+| `MULTI_USER` | 设为 `1` 时每个浏览器各自一份进度、脚本目录和 sandbox（多人共用 / 上课用） | `0` |
 | `PROGRESS_DB` | 进度数据库路径 | `data/progress.sqlite3` |
 | `TERMINAL_RATE_LIMIT` | 每个用户 10 秒内允许的命令条数 | `60` |
 | `PORT` | 监听端口 | `5000` |
